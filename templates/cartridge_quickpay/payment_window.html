@@ -1,0 +1,41 @@
+{% load i18n %}
+
+{# Bootstrap 3 modal for embedded payment window #}
+{# TODO: make Bootstrap 4 compatible #}
+<style>
+  #quickpay-iframe {
+    width: 100%;
+    min-height: calc(100vh - 80px);
+    border: 0;
+  }
+</style>
+
+<div class="modal db-modal fade" id="quickpay-modal" tabindex="-1" role="dialog" aria-labelledby="payment_window_label">
+  <div class="modal-dialog" role="document">
+    <div class="modal-content">
+      <div class="modal-body">
+          <iframe id="quickpay-iframe"></iframe>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+{# Open payment window. Requires JQuery #}
+<script>
+function checkout_quickpay() {
+  $.post("{% url 'quickpay_checkout' %}", $('.checkout-form').serialize(), function(data) {
+    if (data.success) {
+      $('#quickpay-iframe').attr('src', data.payment_link);
+      $('#quickpay-modal').modal('show');
+    } else {
+      alert("{% trans 'Error opening payment window. Please try again or contact us for help.' %}");
+    }
+  });
+  return false;
+}
+
+$(function() {
+  $("#checkout-quickpay-btn").click(checkout_quickpay)
+});
+</script>

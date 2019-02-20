@@ -18,7 +18,7 @@ import json, logging
 from urllib.parse import urlencode
 from typing import List
 
-from .payment_handler import get_quickpay_link, sign, sign_order
+from .payment import get_quickpay_link, sign, sign_order
 from .models import QuickpayPayment
 
 
@@ -29,7 +29,7 @@ order_handler = handler(settings.SHOP_HANDLER_ORDER)
 order_form_class = (lambda s: import_dotted_path(s) if s else OrderForm)(getattr(settings, 'QUICKPAY_ORDER_FORM', None))
 
 
-def checkout_quickpay(request: HttpRequest) -> HttpResponse:
+def quickpay_checkout(request: HttpRequest) -> HttpResponse:
     """Checkout using Quickpay payment form.
 
     Use the normal cartridge.views.checkout_steps for GET and for the rest other payments steps,
@@ -40,7 +40,7 @@ def checkout_quickpay(request: HttpRequest) -> HttpResponse:
     QUICKPAY_ORDER_FORM = dotted path to order form to use
     QUICKPAY_FRAMED_MODE = <whether to use framed Quickpay>
 
-    SHOP_URL: str required = URL of the shop for success, cancel and callback URLs
+    QUICKPAY_SHOP_BASE_URL: str required = URL of the shop for success, cancel and callback URLs
     QUICKPAY_ACQUIRER: str required = The acquirer to use, e.g. 'clearhaus'
     QUICKPAY_AUTO_CAPTURE: bool default False = Whether to auto-capture payment
 
@@ -115,7 +115,7 @@ def checkout_quickpay(request: HttpRequest) -> HttpResponse:
             return JsonResponse({'success': True, 'payment_link': quickpay_link})
         else:
             print("** Redirect response")
-            return HttpResponseRedirect(redirect_to=quickpay_link['url'])
+            return HttpResponseRedirect(redirect_to=quickpay_link)
 
     # Form invalid, go back to checkout step
     step_vars = checkout.CHECKOUT_STEPS[step - 1]

@@ -146,9 +146,9 @@ def get_quickpay_link(order: Order) -> Dict[str, str]:
     # Make Quickpay link
     quickpay_link_args = dict(
         amount=payment.requested_amount,
-        continue_url=settings.SHOP_URL + continue_url,
-        cancel_url=settings.SHOP_URL + cancel_url,
-        callback_url=settings.SHOP_URL + reverse('quickpay_callback'),
+        continue_url=settings.QUICKPAY_SHOP_BASE_URL + continue_url,
+        cancel_url=settings.QUICKPAY_SHOP_BASE_URL + cancel_url,
+        callback_url=settings.QUICKPAY_SHOP_BASE_URL + reverse('quickpay_callback'),
         auto_capture=getattr(settings, 'QUICKPAY_AUTO_CAPTURE', False),
         language=getattr(settings, 'QUICKPAY_LANGUAGE', 'da'),
         framed=framed,
