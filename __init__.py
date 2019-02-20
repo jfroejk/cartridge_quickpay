@@ -1,1 +1,1 @@
-__author__ = 'jfk'
+__author__ = 'jfk@metation.dk'
