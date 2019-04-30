@@ -14,7 +14,8 @@ from cartridge.shop import checkout
 from cartridge.shop.models import Order
 from cartridge.shop.forms import OrderForm
 
-import json, logging
+import json
+import logging
 from urllib.parse import urlencode
 from typing import List
 
@@ -94,13 +95,13 @@ def quickpay_checkout(request: HttpRequest) -> HttpResponse:
     initial = checkout.initial_order_data(request, order_form_class)
     form = order_form_class(request, step, initial=initial, data=request.POST)
     if form.is_valid():
-        print("** Form valid")
+        logging.debug("quickpay_checkout() - Form valid")
         request.session["order"] = dict(form.cleaned_data)
         try:
             billship_handler(request, form)
             tax_handler(request, form)
         except checkout.CheckoutError as e:
-            print("** billship or tax handler failed")
+            logging.warn("quickpay_checkout() - billship or tax handler failed")
             checkout_errors.append(e)
 
         # Create order and Quickpay payment, redirect to Quickpay/Mobilepay form
@@ -111,10 +112,11 @@ def quickpay_checkout(request: HttpRequest) -> HttpResponse:
 
         # Redirect to Quickpay
         if framed:
-            print("** JSON response", {'success': True, 'payment_link': quickpay_link})
+            logging.debug("quickpay_checkout() - JSON response {}"
+                          .format(str({'success': True, 'payment_link': quickpay_link})))
             return JsonResponse({'success': True, 'payment_link': quickpay_link})
         else:
-            print("** Redirect response")
+            logging.debug("quickpay_checkout() - Redirect response")
             return HttpResponseRedirect(redirect_to=quickpay_link)
 
     # Form invalid, go back to checkout step
@@ -130,10 +132,10 @@ def quickpay_checkout(request: HttpRequest) -> HttpResponse:
 
     page = loader.get_template(template).render(context=context, request=request)
     if framed:
-        print("** form not ok, JSON")
+        logging.debug("quickpay_checkout() - Form not OK, JSON response")
         return JsonResponse({'success': False, 'page': page})
     else:
-        print("** form not ok, page")
+        logging.debug("quickpay_checkout() - Form not OK, page response")
         return HttpResponse(page)
 
 
@@ -176,10 +178,13 @@ def success(request: HttpRequest) -> HttpResponse:
         order = Order.objects.get(pk=order_id)
     else:
         order = Order.objects.from_request(request)  # Raises DoesNotExist if order not found
-    print("** SUCCESS order =", order, "sign arg =", request.GET.get('hash'), "check sign =", sign_order(order))
+    order_hash = sign_order(order)
+    logging.debug("payment_quickpay.views.success() - order = %s, sign arg = %s, check sign = %s"
+                  % (order, request.GET.get('hash'), sign_order(order)))
 
     # Check hash.
-    if request.GET.get('hash') != sign_order(order):
+    if request.GET.get('hash') != order_hash:
+        logging.warn("cartridge_quickpay:success - hash doesn't match order")
         return HttpResponseForbidden()
 
     # Call order handler
@@ -192,7 +197,7 @@ def success(request: HttpRequest) -> HttpResponse:
 def success_framed(request: HttpRequest) -> HttpResponse:
     """Succeeded in and iframe, redirect the root page"""
     params = urlencode(request.GET)
-    print("success_iframe PARAMS", params)
+    logging.debug("payment_quickpay.views.success_framed(), calling success with {}".format(params))
     res = """
 <html>
 <head>
@@ -211,15 +216,15 @@ def callback(request: HttpRequest) -> HttpResponse:
     # callback() itself only updates
     data = json.loads(request.body.decode('utf-8'))
     if settings.DEBUG:
-        print("Callback() from Quickpay")
-        print(data)
+        logging.debug("payment_quickpay.views.callback()")
+        logging.debug(data)
 
     # Check checksum
     checksum = sign(request.body, settings.QUICKPAY_PRIVATE_KEY)
     if settings.DEBUG:
-        print("Private key =", settings.QUICKPAY_PRIVATE_KEY)
-        print("Request checksum =", request.META['HTTP_QUICKPAY_CHECKSUM_SHA256'])
-        print("Calculated checksum =", checksum)
+        logging.debug("Private key =", settings.QUICKPAY_PRIVATE_KEY)
+        logging.debug("Request checksum =", request.META['HTTP_QUICKPAY_CHECKSUM_SHA256'])
+        logging.debug("Calculated checksum =", checksum)
     if checksum != request.META['HTTP_QUICKPAY_CHECKSUM_SHA256']:
         logging.error('Quickpay callback: checksum failed {}'.format(data))
         return HttpResponseBadRequest()
@@ -231,25 +236,24 @@ def callback(request: HttpRequest) -> HttpResponse:
     if settings.QUICKPAY_AUTO_CAPTURE and data.get('state', None) != 'processed':
         return HttpResponse("OK")
 
-
     # in checkout_mobilepay we did this: order_id='%s_%06d' % (order.id, payment.id)
     order_id_payment_id_string = data.get('order_id','')
-    print('order_id_payment_id_string: {}'.format(order_id_payment_id_string))
+    logging.debug('order_id_payment_id_string: {}'.format(order_id_payment_id_string))
     separator_index = order_id_payment_id_string.find('_')
     if separator_index > -1:
         order_id = order_id_payment_id_string[:separator_index]
     else:
         order_id = ''
-    print('order_id: {}'.format(order_id))
+    logging.debug('order_id: {}'.format(order_id))
     try:
         order = Order.objects.get(id=order_id)
     except Order.DoesNotExist:
         # Order not found, ignore
         return HttpResponse("OK")
 
-    print("data['accepted']: {}".format(data['accepted']))
-    print("data['test_mode']: {}".format(data['test_mode']))
-    print("order.status: {}".format(order.status))
+    logging.debug("data['accepted']: {}".format(data['accepted']))
+    logging.debug("data['test_mode']: {}".format(data['test_mode']))
+    logging.debug("order.status: {}".format(order.status))
     if data['accepted']:
         with transaction.atomic():
             qpps: List[QuickpayPayment] = list(
@@ -265,6 +269,6 @@ def callback(request: HttpRequest) -> HttpResponse:
             order.transaction_id = data['id']
             order_handler(request=None, order_form=None, order=order)
 
-    print("Callback() - final order.status: {}".format(order.status))
+    logging.debug("Callback() - final order.status: {}".format(order.status))
 
     return HttpResponse("OK")

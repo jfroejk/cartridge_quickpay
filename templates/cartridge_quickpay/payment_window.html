@@ -24,7 +24,7 @@
 {# Open payment window. Requires JQuery #}
 <script>
 function checkout_quickpay() {
-  $.post("{% url 'quickpay_checkout' %}", $('.checkout-form').serialize(), function(data) {
+  $.post("{% url "quickpay_checkout" %}", $('.checkout-form').serialize(), function(data) {
     if (data.success) {
       $('#quickpay-iframe').attr('src', data.payment_link);
       $('#quickpay-modal').modal('show');

@@ -19,7 +19,7 @@ SETTINGS:
 
 TEST CARD:
     number = 1000020000000006
-    expiration = 1609
+    expiration = 12 99
     cvd = 123
 
     see list of test cards here: https://learn.quickpay.net/tech-talk/appendixes/test/
@@ -99,7 +99,6 @@ def quickpay_payment_handler(request, order_form: Form, order: Order) -> str:
         raise CheckoutError(_("Payment information invalid"))
 
     logging.debug("quickpay_payment_handler(): authorize result = %s" % res)
-    print("QP result", res)
     payment.update_from_res(res)
     if payment.accepted or payment.test_mode:
         payment.accepted_date = now()
@@ -172,7 +171,12 @@ def sign(base: bytes, private_key: str) -> str:
 
 def sign_order(order: Order) -> str:
     """Calculate order order signature"""
-    return sign(bytes(str(order.pk) + str(order.total) + order.key, 'utf-8'), settings.QUICKPAY_PRIVATE_KEY)
+    # order.total may have more decimals than are saved, round to make sure it has exactly two
+    sign_string = str(order.pk) + str(round(order.total, 2)) + order.key
+    logging.debug("cartridge_quickpay:sign_order() - sign string = '{}'".format(sign_string))
+    res = sign(bytes(sign_string, 'utf-8'), settings.QUICKPAY_PRIVATE_KEY)
+    logging.debug("cartridge_quickpay:sign_order() - signature = '{}'".format(res))
+    return res
 
 
 # Signal when order has been authorized. Sent once per order.
@@ -199,27 +203,27 @@ def order_handler(request: Optional[HttpRequest], order_form, order: Order):
     completed_now = False
     with transaction.atomic():
         transaction_id = order.transaction_id
-        # Re-read the order from the database to make sure it locked for atomicity
+        # Re-read the order from the database to make sure it locked for atomicity. This is important!
         order: Order = Order.objects.filter(pk=order.pk).select_for_update()[0]
         status_authorized = getattr(settings, 'QUICKPAY_ORDER_STATUS_AUTHORIZED', None)
         if status_authorized and order.status < status_authorized or not order.transaction_id:
-            print("order_handler() - called", order)
+            logging.debug("payment_quickpay.payment.order_handler(), order = %s" % order)
             if status_authorized:
                 order.status = status_authorized
 
             if transaction_id:
-                print("order_handler() - save transaction_id {}".format(transaction_id))
+                logging.debug("order_handler() - save transaction_id {}".format(transaction_id))
                 order.transaction_id = transaction_id
             order.save()
 
             order_authorized.send(sender=Order, instance=order)
         else:
-            print("order_handler() - order {} already being processed".format(order.id))
+            logging.debug("order_handler() - order {} already being processed".format(order.id))
 
         # Complete Order (delete basket, etc.)
         # Possible problem: stock and discount usages not counted down if success URL not reached
         if request is not None:
-            print("order_handler() - calling order.complete()")
+            logging.debug("order_handler() - calling order.complete()")
             status_waiting = getattr(settings, 'QUICKPAY_ORDER_STATUS_WAITING', None)
             if status_waiting and order.status < status_waiting:
                 completed_now = True
