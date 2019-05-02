@@ -9,6 +9,8 @@ DEPENDENCIES:
 SETTINGS:
     QUICKPAY_API_KEY  = API key for access to QuickPay.
     QUICKPAY_ACQUIRER = Name of acquirer, defaults to 'nets'. Must be a valid acquirer.
+                        Set explicitly to None for "any acquirer"
+                        Nets without API key can be used for test
     QUICKPAY_TESTMODE = Whether to run in testmode (= let test card payments through, real cards _ALWAYS_ go
                         through if there is a real acquirer active in QuickPay)
 
@@ -17,8 +19,13 @@ SETTINGS:
 
     SHOP_ORDER_PAID = order status to set when payment completed
 
-TEST CARD:
+TEST CARD (Nets, Dankort):
     number = 1000020000000006
+    expiration = 12 99
+    cvd = 123
+
+    Clearhaus, VISA:
+    number: 1000 0000 0000 0008
     expiration = 12 99
     cvd = 123
 
@@ -125,14 +132,19 @@ def get_quickpay_link(order: Order) -> Dict[str, str]:
     If both settings.QUICKPAY_ACQUIRER and settings.QUICKPAY_PAYMENT_METHODS are None or unspecified,
     the payment window will let the user choose any available payment method.
     """
+    logging.debug("payment_quickpay: get_quickpay_link() - link for {}".format(order))
     framed: bool = getattr(settings, 'QUICKPAY_FRAMED_MODE', False)
     currency = locale.localeconv()['int_curr_symbol'][0:3]
     card_last4 = '9999'
     payment = QuickpayPayment.create_card_payment(order, order.total, currency, card_last4)
 
     client = quickpay_client()
-    res = client.post('/payments', currency=currency, order_id='%s_%06d' % (order.id, payment.id))
+    qp_order_id = '%s_%06d' % (order.id, payment.id)
+    res = client.post('/payments', currency=currency, order_id=qp_order_id)
     payment_id = res['id']
+    logging.debug(
+        "payment_quickpay: get_quickpay_link() - created Quickpay payment with order_id={}, payment id={}"
+        .format(qp_order_id, res['id']))
 
     # Make continue_url, cancel_url for framed/unframed versions
     if framed:
@@ -154,10 +166,18 @@ def get_quickpay_link(order: Order) -> Dict[str, str]:
     )
     if getattr(settings, 'QUICKPAY_ACQUIRER', None):
         quickpay_link_args['acquirer'] = settings.QUICKPAY_ACQUIRER
+        logging.debug("payment_quickpay: get_quickpay_link() - acquirer = ''".format(settings.QUICKPAY_ACQUIRER))
     if getattr(settings, 'QUICKPAY_PAYMENT_METHODS', None):
         quickpay_link_args['payment_methods'] = settings.QUICKPAY_PAYMENT_METHODS
+        logging.debug("payment_quickpay: get_quickpay_link() - payement methods = ''"
+                      .format(settings.QUICKPAY_PAYMENT_METHODS))
 
-    return client.put("/payments/%s/link" % payment_id, **quickpay_link_args)
+    logging.debug(
+        "payment_quickpay: get_quickpay_link() - creating link with args {}".format(str(quickpay_link_args)))
+    res = client.put("/payments/%s/link" % payment_id, **quickpay_link_args)
+    logging.debug(
+        "payment_quickpay: get_quickpay_link() - got link {}".format(res))
+    return res
 
 
 def sign(base: bytes, private_key: str) -> str:
@@ -207,7 +227,7 @@ def order_handler(request: Optional[HttpRequest], order_form, order: Order):
         order: Order = Order.objects.filter(pk=order.pk).select_for_update()[0]
         status_authorized = getattr(settings, 'QUICKPAY_ORDER_STATUS_AUTHORIZED', None)
         if status_authorized and order.status < status_authorized or not order.transaction_id:
-            logging.debug("payment_quickpay.payment.order_handler(), order = %s" % order)
+            logging.debug("payment_quickpay: order_handler(), order = %s" % order)
             if status_authorized:
                 order.status = status_authorized
 
