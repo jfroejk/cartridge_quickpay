@@ -222,9 +222,9 @@ def callback(request: HttpRequest) -> HttpResponse:
     # Check checksum
     checksum = sign(request.body, settings.QUICKPAY_PRIVATE_KEY)
     if settings.DEBUG:
-        logging.debug("Private key =", settings.QUICKPAY_PRIVATE_KEY)
-        logging.debug("Request checksum =", request.META['HTTP_QUICKPAY_CHECKSUM_SHA256'])
-        logging.debug("Calculated checksum =", checksum)
+        logging.debug("Private key = {}".format(settings.QUICKPAY_PRIVATE_KEY))
+        logging.debug("Request checksum = {}".format(request.META['HTTP_QUICKPAY_CHECKSUM_SHA256']))
+        logging.debug("Calculated checksum = {}".format(checksum))
     if checksum != request.META['HTTP_QUICKPAY_CHECKSUM_SHA256']:
         logging.error('Quickpay callback: checksum failed {}'.format(data))
         return HttpResponseBadRequest()
@@ -233,7 +233,7 @@ def callback(request: HttpRequest) -> HttpResponse:
     # 1) authorization callback with data['state'] == 'new'
     # 2) capture callback with data['state'] == 'processed'
     # if auto capture is on, ignore the first callback
-    if settings.QUICKPAY_AUTO_CAPTURE and data.get('state', None) != 'processed':
+    if getattr(settings, 'QUICKPAY_AUTO_CAPTURE', False) and data.get('state', None) != 'processed':
         return HttpResponse("OK")
 
     # in checkout_mobilepay we did this: order_id='%s_%06d' % (order.id, payment.id)
@@ -263,7 +263,7 @@ def callback(request: HttpRequest) -> HttpResponse:
                 qpp.update_from_res(data)
                 if qpp.accepted or qpp.test_mode:
                     qpp.accepted_date = now()
-                    if settings.QUICKPAY_AUTO_CAPTURE:
+                    if getattr(settings, 'QUICKPAY_AUTO_CAPTURE', False):
                         qpp.captured_date = qpp.accepted_date
                 qpp.save()
             order.transaction_id = data['id']
