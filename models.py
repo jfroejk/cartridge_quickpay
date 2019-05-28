@@ -7,8 +7,9 @@ from django.db import models
 from django.core.exceptions import ImproperlyConfigured
 from django.utils.timezone import now
 from django.conf import settings
-from cartridge.shop.models import Order
+from cartridge.shop.models import Order, OrderItem, Product
 from cartridge.shop.checkout import CheckoutError
+from cartridge.shop import fields
 from quickpay_api_client import QPClient
 from quickpay_api_client.exceptions import ApiError
 

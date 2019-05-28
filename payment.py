@@ -44,12 +44,13 @@ from django.dispatch import Signal
 from django.http import HttpRequest
 from django.db import transaction
 from mezzanine.conf import settings
-from cartridge.shop.models import Order
+from cartridge.shop.models import Order, OrderItem
 from cartridge.shop.checkout import CheckoutError, send_order_email
 from .models import QuickpayPayment, quickpay_client
 from quickpay_api_client.exceptions import ApiError
 # noinspection PyPep8
 import hmac, hashlib, locale, logging
+from datetime import datetime
 from typing import Dict, Optional
 
 
@@ -82,7 +83,7 @@ def quickpay_payment_handler(request, order_form: Form, order: Order) -> str:
     # Currency - the shop's currency. If we support multiple currencies in the future,
     # fetch currency from order instead.
     locale.setlocale(locale.LC_ALL, str(settings.SHOP_CURRENCY_LOCALE))
-    currency = locale.localeconv()['int_curr_symbol'][0:3]
+    currency = order_currency(order)
     logging.debug("quickpay_payment_handler(): currency = %s" % currency)
 
     payment = QuickpayPayment.create_card_payment(order, order.total, currency, card_last4)
@@ -134,7 +135,7 @@ def get_quickpay_link(order: Order) -> Dict[str, str]:
     """
     logging.debug("payment_quickpay: get_quickpay_link() - link for {}".format(order))
     framed: bool = getattr(settings, 'QUICKPAY_FRAMED_MODE', False)
-    currency = locale.localeconv()['int_curr_symbol'][0:3]
+    currency = order_currency(order)
     card_last4 = '9999'
     payment = QuickpayPayment.create_card_payment(order, order.total, currency, card_last4)
 
@@ -178,6 +179,57 @@ def get_quickpay_link(order: Order) -> Dict[str, str]:
     logging.debug(
         "payment_quickpay: get_quickpay_link() - got link {}".format(res))
     return res
+
+
+try:
+    from cartridge_subscription.models import Subscription
+except ImportError:
+    Subscription = None
+
+
+def start_subscription(order: Order, order_item: OrderItem) -> dict:
+    """Start subscription and get subscription authorization link"""
+    currency = order_currency(order)
+    payment = QuickpayPayment.create_card_payment(order, order.total, currency, '9999')
+
+    client = quickpay_client()
+    qp_order_id = '%s_%06d' % (order.id, payment.id)
+    res = client.post("/subscriptions", order_id=qp_order_id, currency=currency, description=order_item.description)
+    subscription_id = res['id']
+
+    int_amount = int(order.total * 100)
+    res = client.put('/subscriptions/{}/link'.format(subscription_id), amount=int_amount)  # TODO: consider tax
+    url = res['url']
+
+    if Subscription is not None:
+        Subscription.subscribe(order.username, order_item.sku, getattr(order_item, 'currency', 'USD'),
+                               user_email=order.billing_detail_email, membership_id=subscription_id)
+
+    return {'subscription_id': subscription_id, 'payment_url': url}
+
+
+def pay_subscription(subscription_id: int, order: Order) -> str:
+    subscription = None
+    if Subscription is not None:
+        try:
+            subscription = Subscription.objects.get(membership_id=subscription_id)
+        except Subscription.DoesNotExist:
+            pass
+
+    client = quickpay_client()
+    currency = order_currency(order)
+    payment = QuickpayPayment.create_card_payment(order, order.total, currency, '9999')
+    qp_order_id = '%s_%06d' % (order.id, payment.id)
+    int_amount = int(order.total * 100)
+    res = client.post("/subscriptions/{}/recurring".format(subscription_id),
+                      order_id=qp_order_id, amount=int_amount, auto_capture=True)
+    if subscription is not None:
+        subscription.renew(order.items[0], datetime.now())  # Handle overlapping periods, etc.
+    return res['id']
+
+
+def order_currency(order: Order) -> str:
+    return getattr(order, 'currency') or locale.localeconv()['int_curr_symbol'][0:3]
 
 
 def sign(base: bytes, private_key: str) -> str:

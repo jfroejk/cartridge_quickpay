@@ -71,12 +71,12 @@ QUICKPAY_TESTMODE = True       # Whether to let payments with test cards through
 You find your Quickpay API key and private key in the Quickpay management interface. The private key is in Settings >
 Mercant > Mercant Settings - Private key. The API key is in Settings > Integration > API User - API key.
 
-## Integration of payment window
+## Integration of overlaid payment window (in Bootstrap modal)
 
 To use the Quickpay payment window, the standard payment form must be disabled and replaced with activation of the
 Quickpay payment window.
 
-Make a copy of `shop/includes/checkout.html` in your project and do these edits:
+Make a copy of `shop/checkout.html` in your project and do these edits:
 
 In block `nav-buttons`, replace:
 
@@ -100,6 +100,19 @@ Add Quickpay payment window setup at the bottom:
 {% quickpay_payment_window %}
 {% endblock %}
 ```
+
+## Integration of full view payment window
+
+To use the quickpay payment window in "full view mode", simply enable the middleware
+`cartridge_quickpay.middleware.QuickpayMiddleware`. When enabled, it will redirect the user to the Quickpay
+payment in place of the standard payment of Cartridge.
+
+```python
+MIDDLEWARE = (
+    ...
+    "cartridge_safecharge.middleware.SafechargeMiddleware",
+)
+``` 
 
 ## Using Quickpay embedded
 
