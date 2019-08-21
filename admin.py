@@ -4,10 +4,17 @@ from django.contrib import admin
 from .models import QuickpayPayment
 
 
-class QuickpayPaymentAdmin(admin.ModelAdmin):
-    list_display = ['qp_id', 'shop_order', 'requested_amount', 'requested_currency', 'accepted', 'test_mode',
-                    'state', 'balance', 'accepted_date', 'captured_date']
+try:
+    from cartridge_subscription.models import Subscription, SubscriptionPeriod
+except ImportError:
+    Subscription, SubscriptionPeriod = None, None
+    
 
+class QuickpayPaymentAdmin(admin.ModelAdmin):
+    list_display = ['qp_id', 'shop_order', 'requested_amount', 'requested_currency', 'accepted',
+                    'state', 'balance', 'accepted_date', 'captured_date', 'test_mode']
+    list_select_related = ('order',)
+        
     search_fields = ['order__username', 'order__reference', 'order__billing_detail_email',
                      'order__membership_id', 'qp_id']
 
@@ -33,6 +40,27 @@ class QuickpayPaymentAdmin(admin.ModelAdmin):
             return "-"
 
     shop_order.allow_tags = True
+
+    def subscription(self, item: QuickpayPayment):
+        try:
+            subscription_id = item.order.subscriptionperiod.subscription_id
+        except (AttributeError, SubscriptionPeriod.DoesNotExist):
+            subscription_id = None
+        if subscription_id is not None:
+            admin_url = reverse(
+                "admin:%s_%s_change"
+                % (Subscription._meta.app_label, Subscription._meta.model_name), args=(subscription_id,))
+
+            return "<a href='{}'>{}</a>".format(admin_url, subscription_id)
+        else:
+            return "-"
+
+    subscription.allow_tags = True
+
+
+if Subscription is not None:
+    QuickpayPaymentAdmin.list_select_related = QuickpayPaymentAdmin.list_select_related + ('order__subscriptionperiod',)
+    QuickpayPaymentAdmin.list_display[2:2] = ['subscription']
 
 
 admin.site.register(QuickpayPayment, QuickpayPaymentAdmin)
