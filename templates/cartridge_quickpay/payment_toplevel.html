@@ -1,0 +1,12 @@
+{% extends "shop/base.html" %}
+{% load i18n %}
+
+{% block main %}
+<h2>{% trans "Payment in progress" %}</h2>
+
+<p>{% trans "The payment process is in progress in another browser window. DO NOT close this window. You will get back here when the payment is done." %}</p>
+
+<script>
+  window.open("{{quickpay_link}}");
+</script>
+{% endblock %}
