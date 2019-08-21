@@ -215,7 +215,7 @@ class QuickpayPayment(models.Model):
         self.acquirer = res['acquirer']
         self.state = res['state']
         self.balance = res.get('balance', 0)
-        self.card_last4 = res.get('metadata', {}).get('last4', self.card_last4)
+        self.card_last4 = res.get('metadata', {}).get('last4', self.card_last4) or '9999'
 
         operations = res.get('operations', [])
         if operations:
