@@ -117,12 +117,27 @@ MIDDLEWARE = (
 ## Using Quickpay embedded
 
 
+## Django signals from payment.order_handler
+
+`payment.order_handler` sends these signals:
+
+  `order_authorized`: The payment was authorized but not captured, yet
+
+  `order_captured`: The payment was captured (by autocapture, by API call or manually)
+
+  `order_completed`: The order was completed and the user redirected to success(). This signal is not guaranteed
+    to be sent, e.g. if the user closes the browser too early.
+
 ## Settings in Quickpay
 
 Settings > Integration > Callback URL must be set to the callback URL of cartridge_quickpay, e.g.
 https://myshop.com/quickpay/callback/. Otherwise Quickpay won't make callbacks and paymnent information
 won't get registered properly in the shop.
 
+## Quickpay responses and test cards
+
+Response `"Capture Rejected"` causes redirect to `success()` because the autorization part was successful.
+We can know that the payment wasn't successful after all by inspecting order.transaction_id which will be blank.
 
 ## Possible improvements
 
